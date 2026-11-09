@@ -26,3 +26,21 @@ Gebruik Chrome of Edge (andere browsers ondersteunen `showDirectoryPicker` nog n
 - **Automatische sync vanaf schijf**: elke 2 seconden wordt gecontroleerd of het
   geopende bestand op schijf is gewijzigd; zo ja, dan wordt de inhoud herladen
   (alleen als je geen niet-opgeslagen lokale wijzigingen hebt).
+- **Bracket matching**: staat de cursor naast een haakje (`()`, `[]`, `{}`, `<>`),
+  dan wordt het corresponderende sluitende/openende haakje in dezelfde kleur
+  omlijnd.
+- **Regex verbergen**: in het invoerveld in de topbalk kun je een regex invoeren.
+  Alle matches in het huidige bestand worden dan verborgen in de weergave
+  (onzichtbaar, maar de tekst blijft gewoon in het bestand — in de browser én op
+  schijf). Wijzigingen worden op de juiste plek in de volledige tekst ingevoegd,
+  óók als er tekst verborgen is. Leeg veld = niets verborgen. Ongeldige regex
+  wordt gemeld in de status.
+
+## Technische werking
+
+De editor bestaat uit een transparante `<textarea>` (bevat altijd de volledige,
+echte tekst — bron van waarheid voor positie, caret en opslag) met daarachter een
+overlay-`<div>` die dezelfde tekst rendert met `visibility: hidden` voor
+regex-matches en een highlight voor het bracket-paar. Omdat de overlay exact
+dezelfde layout heeft als de textarea, blijven caret, scroll en muisklikken
+altijd op de juiste plek,ongeacht verborgen tekst.
