@@ -5,12 +5,20 @@
   const SAVE_DEBOUNCE_MS = 800;
   const DISK_POLL_MS = 2000;
   const TREE_POLL_MS = 5000;
+  const MAX_HIDDEN_MATCHES = 5000;
+  const EDITOR_PADDING = 12;
+
+  const PAIRS = { '(': ')', '[': ']', '{': '}', '<': '>' };
+  const OPENERS = new Set(Object.keys(PAIRS));
+  const CLOSERS = new Set(Object.values(PAIRS));
 
   const openBtn = document.getElementById('open-folder');
   const folderNameEl = document.getElementById('folder-name');
   const statusEl = document.getElementById('status');
+  const filterInput = document.getElementById('filter');
   const treeEl = document.getElementById('tree');
   const fileBar = document.getElementById('file-bar');
+  const overlay = document.getElementById('editor-overlay');
   const editor = document.getElementById('editor');
 
   let rootHandle = null;
@@ -155,6 +163,117 @@
     }
   }
 
+  function isBracket(ch) {
+    return OPENERS.has(ch) || CLOSERS.has(ch);
+  }
+
+  function findMatchingBracket(text, pos) {
+    const ch = text[pos];
+    if (OPENERS.has(ch)) {
+      const close = PAIRS[ch];
+      let depth = 1;
+      for (let i = pos + 1; i < text.length; i++) {
+        if (text[i] === ch) depth++;
+        else if (text[i] === close) {
+          depth--;
+          if (depth === 0) return i;
+        }
+      }
+      return -1;
+    }
+    if (CLOSERS.has(ch)) {
+      const open = Object.keys(PAIRS).find((k) => PAIRS[k] === ch);
+      let depth = 1;
+      for (let i = pos - 1; i >= 0; i--) {
+        if (text[i] === ch) depth++;
+        else if (text[i] === open) {
+          depth--;
+          if (depth === 0) return i;
+        }
+      }
+      return -1;
+    }
+    return -1;
+  }
+
+  function bracketPairAtCursor() {
+    const text = editor.value;
+    const pos = editor.selectionStart;
+    for (const p of [pos - 1, pos]) {
+      if (p >= 0 && p < text.length && isBracket(text[p])) {
+        const match = findMatchingBracket(text, p);
+        if (match !== -1) return [p, match];
+      }
+    }
+    return null;
+  }
+
+  function computeHiddenRanges(text) {
+    const pattern = filterInput.value;
+    if (!pattern) return [];
+    let re;
+    try {
+      re = new RegExp(pattern, 'g');
+    } catch (err) {
+      setStatus('Ongeldige regex: ' + err.message, 'warn');
+      return [];
+    }
+    const ranges = [];
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      if (m[0].length > 0) ranges.push([m.index, m.index + m[0].length]);
+      else re.lastIndex++;
+      if (ranges.length >= MAX_HIDDEN_MATCHES) break;
+    }
+    return ranges;
+  }
+
+  function renderOverlay() {
+    const text = editor.value;
+    const hiddenRanges = computeHiddenRanges(text);
+    const pair = bracketPairAtCursor();
+
+    const hiddenFlag = new Uint8Array(text.length);
+    for (const range of hiddenRanges) hiddenFlag.fill(1, range[0], range[1]);
+    const bracketFlag = new Uint8Array(text.length);
+    if (pair) {
+      bracketFlag[pair[0]] = 1;
+      bracketFlag[pair[1]] = 1;
+    }
+
+    overlay.textContent = '';
+    const frag = document.createDocumentFragment();
+    let i = 0;
+    while (i < text.length) {
+      const h = hiddenFlag[i];
+      const b = bracketFlag[i];
+      let j = i + 1;
+      while (j < text.length && hiddenFlag[j] === h && bracketFlag[j] === b) j++;
+      const seg = text.slice(i, j);
+      if (h || b) {
+        const span = document.createElement('span');
+        span.className = (h ? 'hidden' : '') + (h && b ? ' ' : '') + (b ? 'bracket' : '');
+        span.textContent = seg;
+        frag.appendChild(span);
+      } else {
+        frag.appendChild(document.createTextNode(seg));
+      }
+      i = j;
+    }
+    overlay.appendChild(frag);
+    if (text.endsWith('\n')) overlay.appendChild(document.createTextNode('\n'));
+    syncOverlayScroll();
+  }
+
+  function syncOverlayScroll() {
+    const sbw = editor.offsetWidth - editor.clientWidth;
+    const sbh = editor.offsetHeight - editor.clientHeight;
+    overlay.style.paddingRight = EDITOR_PADDING + sbw + 'px';
+    overlay.style.paddingBottom = EDITOR_PADDING + sbh + 'px';
+    overlay.scrollTop = editor.scrollTop;
+    overlay.scrollLeft = editor.scrollLeft;
+  }
+
   async function openFile(item) {
     if (dirty && currentFile) await saveCurrent();
     selectedPath = item.path;
@@ -176,6 +295,7 @@
         setStatus('Geopend', 'ok');
       }
       renderTree();
+      renderOverlay();
       editor.focus();
     } catch (err) {
       console.error('Kon bestand niet openen:', err);
@@ -188,6 +308,7 @@
     setStatus('Niet-opgeslagen wijzigingen…', 'busy');
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveCurrent, SAVE_DEBOUNCE_MS);
+    renderOverlay();
   }
 
   async function saveCurrent() {
@@ -217,6 +338,7 @@
           const text = await file.text();
           if (!text.includes('\u0000')) editor.value = text;
           lastModified = file.lastModified;
+          renderOverlay();
           setStatus('Gesynchroniseerd vanaf schijf om ' + new Date().toLocaleTimeString('nl-NL'), 'ok');
         } else {
           setStatus('Op schijf gewijzigd; lokale wijzigingen nog niet opgeslagen', 'warn');
@@ -265,6 +387,7 @@
     fileBar.textContent = 'Geen bestand geopend';
     setStatus('Map geopend', 'ok');
     await refreshTree();
+    renderOverlay();
     clearInterval(diskTimer);
     clearInterval(treeTimer);
     diskTimer = setInterval(syncFromDisk, DISK_POLL_MS);
@@ -274,6 +397,14 @@
   openBtn.addEventListener('click', openFolder);
 
   editor.addEventListener('input', onEdit);
+  editor.addEventListener('scroll', syncOverlayScroll);
+  editor.addEventListener('keyup', renderOverlay);
+  editor.addEventListener('click', renderOverlay);
+  editor.addEventListener('select', renderOverlay);
+
+  filterInput.addEventListener('input', renderOverlay);
+
+  window.addEventListener('resize', syncOverlayScroll);
 
   editor.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
