@@ -43,4 +43,4 @@ echte tekst — bron van waarheid voor positie, caret en opslag) met daarachter 
 overlay-`<div>` die dezelfde tekst rendert met `visibility: hidden` voor
 regex-matches en een highlight voor het bracket-paar. Omdat de overlay exact
 dezelfde layout heeft als de textarea, blijven caret, scroll en muisklikken
-altijd op de juiste plek,ongeacht verborgen tekst.
+altijd op de juiste plek, ongeacht verborgen tekst.
