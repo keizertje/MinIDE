@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mini IDE</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header id="topbar">
+    <button id="open-folder" type="button">📁 Map openen</button>
+    <span id="folder-name">Geen map geopend</span>
+    <span id="status" role="status"></span>
+  </header>
+  <div id="layout">
+    <aside id="sidebar">
+      <div id="tree" class="tree"></div>
+    </aside>
+    <main id="editor-pane">
+      <div id="file-bar">Geen bestand geopend</div>
+      <textarea id="editor" spellcheck="false" disabled
+        placeholder="Open een map via de knop linksboven en klik op een bestand in de boom."></textarea>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
