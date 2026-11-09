@@ -46,6 +46,20 @@ body {
   white-space: nowrap;
 }
 
+#filter {
+  width: 240px;
+  padding: 5px 8px;
+  font-size: 13px;
+  font-family: Consolas, "Courier New", monospace;
+  border: 1px solid #cccccc;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+#filter:focus {
+  outline: 1px solid #7ab3ff;
+}
+
 #status {
   margin-left: auto;
   font-size: 12px;
@@ -140,12 +154,22 @@ body {
   font-family: Consolas, "Courier New", monospace;
 }
 
-#editor {
+#editor-wrap {
+  position: relative;
   flex: 1;
-  border: 0;
-  outline: none;
-  resize: none;
+  min-height: 0;
+}
+
+#editor-overlay,
+#editor {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   padding: 12px;
+  border: 0;
+  box-sizing: border-box;
   font-family: Consolas, "Courier New", monospace;
   font-size: 14px;
   line-height: 1.5;
@@ -154,7 +178,37 @@ body {
   overflow: auto;
 }
 
-#editor:disabled {
-  background: #fafafa;
+#editor-overlay {
+  overflow: hidden;
+  background: #ffffff;
+  color: #1f1f1f;
+  pointer-events: none;
+  user-select: none;
+}
+
+#editor-overlay .hidden {
+  visibility: hidden;
+}
+
+#editor-overlay .bracket {
+  background: #ffe9a8;
+  outline: 1px solid #d48806;
+  border-radius: 2px;
+}
+
+#editor {
+  z-index: 1;
+  background: transparent;
+  color: transparent;
+  caret-color: #1f1f1f;
+  resize: none;
+  outline: none;
+}
+
+#editor::placeholder {
   color: #999999;
+}
+
+#editor:disabled {
+  caret-color: transparent;
 }
