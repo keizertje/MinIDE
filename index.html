@@ -10,6 +10,9 @@
   <header id="topbar">
     <button id="open-folder" type="button">📁 Map openen</button>
     <span id="folder-name">Geen map geopend</span>
+    <input id="filter" type="text" spellcheck="false"
+      placeholder="Regex verbergen…"
+      title="Alles wat matcht met deze regex wordt verborgen in de weergave; het blijft wél in het bestand." />
     <span id="status" role="status"></span>
   </header>
   <div id="layout">
@@ -18,8 +21,11 @@
     </aside>
     <main id="editor-pane">
       <div id="file-bar">Geen bestand geopend</div>
-      <textarea id="editor" spellcheck="false" disabled
-        placeholder="Open een map via de knop linksboven en klik op een bestand in de boom."></textarea>
+      <div id="editor-wrap">
+        <div id="editor-overlay" aria-hidden="true"></div>
+        <textarea id="editor" spellcheck="false" disabled
+          placeholder="Open een map via de knop linksboven en klik op een bestand in de boom."></textarea>
+      </div>
     </main>
   </div>
   <script src="app.js"></script>
