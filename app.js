@@ -758,20 +758,29 @@
   }
 
   function locateInOverlay(index) {
-    let remaining = index;
-    const walk = (node) => {
+    // Verzamel alle text-nodes in documentvolgorde. Een index op een grens
+    // (remaining === len) wordt expres NIET aan het einde van de vorige node
+    // gekoppeld, maar aan het begin van de volgende — een collapsed range op
+    // het einde van een text-node geeft in browsers een onbetrouwbare rect.
+    const textNodes = [];
+    const collect = (node) => {
       for (const child of node.childNodes) {
-        const len = child.textContent.length;
-        if (remaining <= len) {
-          if (child.nodeType === 3) return { node: child, offset: remaining };
-          const r = walk(child);
-          if (r) return r;
-        }
-        remaining -= len;
+        if (child.nodeType === 3) textNodes.push(child);
+        else collect(child);
       }
-      return null;
     };
-    return walk(overlay);
+    collect(overlay);
+    let remaining = index;
+    for (const t of textNodes) {
+      const len = t.textContent.length;
+      if (remaining < len) return { node: t, offset: remaining };
+      remaining -= len;
+    }
+    if (textNodes.length) {
+      const last = textNodes[textNodes.length - 1];
+      return { node: last, offset: last.textContent.length };
+    }
+    return null;
   }
 
   function renderLineNumbers() {
@@ -794,7 +803,10 @@
           const range = document.createRange();
           range.setStart(loc.node, loc.offset);
           range.collapse(true);
-          top = range.getBoundingClientRect().top - overlayRect.top + overlay.scrollTop;
+          const r = range.getBoundingClientRect();
+          if (r && (r.height > 0 || r.width > 0)) {
+            top = r.top - overlayRect.top + overlay.scrollTop;
+          }
         }
       }
       const div = document.createElement('div');
