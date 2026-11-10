@@ -740,11 +740,14 @@
     }
     overlay.appendChild(frag);
 
+    // Eerst scrollbar-compensatie + scroll toepassen: pas daarna is de
+    // layout van de overlay definitief (breedte = die van de textarea),
+    // en pas dan mogen de regelnummers gemeten worden.
+    syncOverlayScroll();
     if (text !== lastOverlayText) {
       lastOverlayText = text;
       renderLineNumbers();
     }
-    syncOverlayScroll();
   }
 
   function refreshEditorLayout() {
@@ -980,6 +983,11 @@
   renderSections();
   applyLayout();
   renderOverlay();
+
+  // Als het lettertype (laat) geladen is, kan de layoutMetrics wijzigen -> opnieuw meten.
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => refreshEditorLayout());
+  }
 
   (async () => {
     try {
