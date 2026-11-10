@@ -26,21 +26,34 @@ Gebruik Chrome of Edge (andere browsers ondersteunen `showDirectoryPicker` nog n
 - **Automatische sync vanaf schijf**: elke 2 seconden wordt gecontroleerd of het
   geopende bestand op schijf is gewijzigd; zo ja, dan wordt de inhoud herladen
   (alleen als je geen niet-opgeslagen lokale wijzigingen hebt).
+- **Regelnummers**: in de kolom links van de editor; ze lopen op bij elke `\n`
+  in het bestand (niet bij een wrap).
+- **Hard wrap**: regels worden aan de rechterrand van het scherm afgebroken;
+  horizontaal scrollen is niet nodig.
 - **Bracket matching**: staat de cursor naast een haakje (`()`, `[]`, `{}`, `<>`),
-  dan wordt het corresponderende sluitende/openende haakje in dezelfde kleur
-  omlijnd.
-- **Regex verbergen**: in het invoerveld in de topbalk kun je een regex invoeren.
-  Alle matches in het huidige bestand worden dan verborgen in de weergave
-  (onzichtbaar, maar de tekst blijft gewoon in het bestand — in de browser én op
-  schijf). Wijzigingen worden op de juiste plek in de volledige tekst ingevoegd,
-  óók als er tekst verborgen is. Leeg veld = niets verborgen. Ongeldige regex
-  wordt gemeld in de status.
+  dan wordt het corresponderende sluitende/openende haakje omlijnd.
+- **Regex verbergen**: met de checkbox "verberg" zet je het aan/uit. Leeg veld =
+  niets verborgen. Met de modus-switch kies je of **matches** worden verborgen
+  of **alles behalve matches**. Matches blijven altijd in het bestand (browser én
+  schijf); bewerkingen gaan op de juiste plek in de volledige tekst.
+- **Regex markeren**: het tweede regex-veld kleurt alle matches in de gekozen
+  kleur (colorpicker ernaast).
+- **Recursieve regex**: de engine is Regex+ 6.1.0 met de officiële
+  `regex-recursion`-plugin 6.0.2, geladen vanaf jsdelivr (CDN), dus `(?R)`,
+  `(?R=N)` en `\g<naam&R=N>` werken (diepte 2–100; plain `(?R)` wordt
+  automatisch `(?R=100)`). Let op: `(?R)` recursed het hele patroon, net als in
+  PCRE — gebruik `\g<naam&R=N>` om alleen een benoemde group te herhalen.
+  Zonder internet (CDN onbereikbaar) valt de engine terug op de ingebouwde
+  `RegExp` — dan werken gewone regexes nog wel, maar `(?R)` niet.
 
 ## Technische werking
 
 De editor bestaat uit een transparante `<textarea>` (bevat altijd de volledige,
-echte tekst — bron van waarheid voor positie, caret en opslag) met daarachter een
-overlay-`<div>` die dezelfde tekst rendert met `visibility: hidden` voor
-regex-matches en een highlight voor het bracket-paar. Omdat de overlay exact
-dezelfde layout heeft als de textarea, blijven caret, scroll en muisklikken
-altijd op de juiste plek, ongeacht verborgen tekst.
+echte tekst — bron van waarheid voor positie, caret, wrap en opslag) met
+daarachter een overlay-`<div>` met identieke layout. De overlay rendert
+`visibility: hidden` voor verborgen ranges, een achtergrondkleur voor gemarkeerde
+ranges en een outline voor het bracket-paar. Regelnummers worden in de gutter
+gepositioneerd via de echte layout-positie (Range-rect) van elke regelstart, dus
+ze blijven synchroon bij wraps. Omdat de overlay qua layout 1-op-1 gelijk is aan
+de textarea (inclusief scrollbar-compensatie), blijven caret, scroll en
+muisklikken altijd op de juiste plek, óók met verborgen tekst.
