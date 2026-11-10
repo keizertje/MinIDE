@@ -10,24 +10,20 @@
   <header id="topbar">
     <button id="open-folder" type="button">📁 Map openen</button>
     <span id="folder-name">Geen map geopend</span>
-    <span class="ctl" title="Verberg tekst op basis van een regex; de tekst blijft wél in het bestand">
-      <label><input type="checkbox" id="filter-enabled" checked /> verberg</label>
-      <select id="filter-mode">
-        <option value="hide-matches">matches verbergen</option>
-        <option value="hide-non-matches">alles behalve matches verbergen</option>
-      </select>
-      <input id="filter" type="text" spellcheck="false" placeholder="Regex verbergen…" />
-    </span>
-    <span class="ctl" title="Markeer matches met een kleur">
-      <input id="mark-filter" type="text" spellcheck="false" placeholder="Regex markeren…" />
-      <input id="mark-color" type="color" value="#ffe58a" title="Kleur voor gemarkeerde matches" />
-    </span>
+    <button id="toggle-panel" type="button" title="Sectiepaneel tonen/verbergen">Secties</button>
+    <button id="settings-btn" type="button" title="Instellingen">⚙</button>
+    <div id="settings-pop" hidden>
+      <label>Max. matches per regex
+        <input id="max-matches" type="number" min="100" max="1000000" step="100" />
+      </label>
+    </div>
     <span id="status" role="status"></span>
   </header>
   <div id="layout">
     <aside id="sidebar">
       <div id="tree" class="tree"></div>
     </aside>
+    <div id="resizer-left" class="resizer" title="Breedte bestandenpaneel aanpassen"></div>
     <main id="editor-pane">
       <div id="file-bar">Geen bestand geopend</div>
       <div id="editor-wrap">
@@ -37,6 +33,14 @@
           placeholder="Open een map via de knop linksboven en klik op een bestand in de boom."></textarea>
       </div>
     </main>
+    <div id="resizer-right" class="resizer" title="Breedte sectiepaneel aanpassen"></div>
+    <aside id="regex-panel">
+      <div class="panel-header">
+        <span class="panel-title">Secties</span>
+        <button id="add-section" type="button" class="icon-btn" title="Nieuwe sectie aanmaken">＋</button>
+      </div>
+      <div id="sections"></div>
+    </aside>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/regex@6.1.0/dist/regex.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/regex-recursion@6.0.2/dist/regex-recursion.min.js"></script>
