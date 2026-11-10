@@ -22,6 +22,8 @@
     <aside id="sidebar">
       <div class="panel-header">
         <span class="panel-title">Bestanden</span>
+        <button id="new-file-btn" type="button" class="icon-btn" title="Nieuw bestand aanmaken">📄＋</button>
+        <button id="new-folder-btn" type="button" class="icon-btn" title="Nieuwe map aanmaken">📁＋</button>
         <button id="sidebar-collapse-btn" type="button" class="icon-btn" title="Bestandenpaneel inklappen">❮</button>
       </div>
       <div id="tree" class="tree"></div>
@@ -39,6 +41,7 @@
     <div id="resizer-right" class="resizer" title="Breedte sectiepaneel aanpassen"></div>
     <aside id="regex-panel">
       <div class="panel-header">
+        <input type="checkbox" id="toggle-all-sections" title="Alle secties in-/uitschakelen" />
         <span class="panel-title">Secties</span>
         <button id="add-section" type="button" class="icon-btn" title="Nieuwe sectie aanmaken">＋</button>
         <button id="panel-collapse-btn" type="button" class="icon-btn" title="Sectiepaneel inklappen">❯</button>
