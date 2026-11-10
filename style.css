@@ -19,7 +19,8 @@ body {
 #topbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   padding: 8px 12px;
   background: #f5f5f5;
   border-bottom: 1px solid #dddddd;
@@ -46,8 +47,32 @@ body {
   white-space: nowrap;
 }
 
-#filter {
-  width: 240px;
+.ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #444444;
+}
+
+.ctl label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+#filter-mode {
+  padding: 4px;
+  font-size: 12px;
+  border: 1px solid #cccccc;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+#filter,
+#mark-filter {
+  width: 180px;
   padding: 5px 8px;
   font-size: 13px;
   font-family: Consolas, "Courier New", monospace;
@@ -56,8 +81,19 @@ body {
   background: #ffffff;
 }
 
-#filter:focus {
+#filter:focus,
+#mark-filter:focus {
   outline: 1px solid #7ab3ff;
+}
+
+#mark-color {
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #cccccc;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
 }
 
 #status {
@@ -160,6 +196,36 @@ body {
   min-height: 0;
 }
 
+#gutter {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 46px;
+  overflow: hidden;
+  background: #f0f0f0;
+  border-right: 1px solid #dddddd;
+  z-index: 2;
+  pointer-events: none;
+  user-select: none;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #999999;
+}
+
+#line-numbers {
+  position: relative;
+  width: 100%;
+}
+
+.line-number {
+  position: absolute;
+  right: 6px;
+  height: 21px;
+  text-align: right;
+}
+
 #editor-overlay,
 #editor {
   position: absolute;
@@ -168,14 +234,17 @@ body {
   height: 100%;
   margin: 0;
   padding: 12px;
+  padding-left: 58px;
   border: 0;
   box-sizing: border-box;
   font-family: Consolas, "Courier New", monospace;
   font-size: 14px;
   line-height: 1.5;
   tab-size: 2;
-  white-space: pre;
-  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 #editor-overlay {
@@ -188,6 +257,11 @@ body {
 
 #editor-overlay .hidden {
   visibility: hidden;
+}
+
+#editor-overlay .mark {
+  background: var(--mark-color, #ffe58a);
+  border-radius: 2px;
 }
 
 #editor-overlay .bracket {
