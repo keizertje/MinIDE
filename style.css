@@ -27,7 +27,7 @@ body {
   border-bottom: 1px solid #dddddd;
 }
 
-#topbar button {
+#topbar > button {
   padding: 6px 12px;
   border: 1px solid #cccccc;
   border-radius: 4px;
@@ -36,7 +36,7 @@ body {
   font-size: 14px;
 }
 
-#topbar button:hover {
+#topbar > button:hover {
   background: #eeeeee;
 }
 
@@ -51,7 +51,7 @@ body {
 #settings-pop {
   position: absolute;
   top: 44px;
-  right: 120px;
+  right: 12px;
   z-index: 60;
   background: #ffffff;
   border: 1px solid #cccccc;
@@ -81,6 +81,11 @@ body {
   font-size: 12px;
   color: #666666;
   white-space: nowrap;
+  transition: opacity 1.2s ease;
+}
+
+#status.fade-out {
+  opacity: 0;
 }
 
 #status.busy { color: #b26a00; }
@@ -104,6 +109,27 @@ body {
   background: #cccccc;
 }
 
+.panel-header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: #f0f0f0;
+  border-bottom: 1px solid #dddddd;
+  font-weight: 600;
+  font-size: 13px;
+  z-index: 3;
+}
+
+.panel-header .panel-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #sidebar {
   flex: none;
   width: 230px;
@@ -111,6 +137,23 @@ body {
   border-right: 1px solid #dddddd;
   background: #fafafa;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+#sidebar.collapsed {
+  width: 30px !important;
+  min-width: 30px !important;
+}
+
+#sidebar.collapsed .panel-title,
+#sidebar.collapsed #tree {
+  display: none;
+}
+
+#sidebar.collapsed .panel-header {
+  justify-content: center;
+  padding: 8px 2px;
 }
 
 .tree {
@@ -280,21 +323,21 @@ body {
   flex-direction: column;
 }
 
-.panel-header {
-  position: sticky;
-  top: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  background: #f0f0f0;
-  border-bottom: 1px solid #dddddd;
-  font-weight: 600;
-  font-size: 13px;
+#regex-panel.collapsed {
+  width: 30px !important;
+  min-width: 30px !important;
+  overflow: hidden;
 }
 
-.panel-header .panel-title {
-  flex: 1;
+#regex-panel.collapsed .panel-title,
+#regex-panel.collapsed #add-section,
+#regex-panel.collapsed #sections {
+  display: none;
+}
+
+#regex-panel.collapsed .panel-header {
+  justify-content: center;
+  padding: 8px 2px;
 }
 
 .icon-btn {
@@ -305,6 +348,7 @@ body {
   padding: 2px 8px;
   font-size: 13px;
   line-height: 1.4;
+  flex: none;
 }
 
 .icon-btn:hover {
@@ -322,6 +366,18 @@ body {
   margin-bottom: 8px;
 }
 
+.section.dragging {
+  opacity: 0.5;
+}
+
+.section.drop-before {
+  border-top: 2px solid #7ab3ff;
+}
+
+.section.drop-after {
+  border-bottom: 2px solid #7ab3ff;
+}
+
 .section.inactive {
   opacity: 0.55;
 }
@@ -333,6 +389,13 @@ body {
   padding: 6px 8px;
   cursor: pointer;
   user-select: none;
+}
+
+.section-header .grip {
+  color: #aaaaaa;
+  cursor: grab;
+  flex: none;
+  font-size: 12px;
 }
 
 .section-header .arrow {
