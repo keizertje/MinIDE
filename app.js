@@ -10,6 +10,8 @@
   const DEFAULT_MAX_MATCHES = 5000;
   const MIN_MAX_MATCHES = 100;
   const MAX_MAX_MATCHES = 1000000;
+  const REGEX_ERROR_FADE_MS = 30000;
+  const REGEX_ERROR_FADEOUT_MS = 1200;
 
   const LS_SECTIONS = 'mini-ide-sections';
   const LS_SETTINGS = 'mini-ide-settings';
@@ -22,15 +24,16 @@
   const openBtn = document.getElementById('open-folder');
   const folderNameEl = document.getElementById('folder-name');
   const statusEl = document.getElementById('status');
-  const togglePanelBtn = document.getElementById('toggle-panel');
   const settingsBtn = document.getElementById('settings-btn');
   const settingsPop = document.getElementById('settings-pop');
   const maxMatchesInput = document.getElementById('max-matches');
   const layoutEl = document.getElementById('layout');
   const sidebar = document.getElementById('sidebar');
+  const sidebarCollapseBtn = document.getElementById('sidebar-collapse-btn');
   const resizerLeft = document.getElementById('resizer-left');
   const resizerRight = document.getElementById('resizer-right');
   const regexPanel = document.getElementById('regex-panel');
+  const panelCollapseBtn = document.getElementById('panel-collapse-btn');
   const addSectionBtn = document.getElementById('add-section');
   const sectionsEl = document.getElementById('sections');
   const treeEl = document.getElementById('tree');
@@ -89,6 +92,31 @@
     statusEl.className = kind || '';
   }
 
+  // ---------- status: regex-errors direct weg bij wijziging, anders na 30s uitfaden ----------
+
+  let regexErrorTimer = null;
+  let regexErrorFadeTimer = null;
+
+  function showRegexError(msg) {
+    setStatus(msg, 'warn');
+    statusEl.classList.remove('fade-out');
+    clearTimeout(regexErrorTimer);
+    clearTimeout(regexErrorFadeTimer);
+    regexErrorTimer = setTimeout(() => {
+      statusEl.classList.add('fade-out');
+      regexErrorFadeTimer = setTimeout(() => {
+        if (statusEl.className === 'warn' && statusEl.classList.contains('fade-out')) setStatus('', '');
+      }, REGEX_ERROR_FADEOUT_MS);
+    }, REGEX_ERROR_FADE_MS);
+  }
+
+  function clearRegexError() {
+    clearTimeout(regexErrorTimer);
+    clearTimeout(regexErrorFadeTimer);
+    statusEl.classList.remove('fade-out');
+    if (statusEl.className === 'warn') setStatus('', '');
+  }
+
   // ---------- secties (regex-groepen) ----------
 
   let sections = loadJSON(LS_SECTIONS, null);
@@ -110,17 +138,64 @@
 
   let settings = Object.assign({ maxMatches: DEFAULT_MAX_MATCHES }, loadJSON(LS_SETTINGS, {}));
   let maxMatches = clampInt(settings.maxMatches, MIN_MAX_MATCHES, MAX_MAX_MATCHES, DEFAULT_MAX_MATCHES);
-  let layoutState = Object.assign({ left: 230, right: 260, panelVisible: true }, loadJSON(LS_LAYOUT, {}));
+  let layoutState = Object.assign({ left: 230, right: 260, leftVisible: true, panelVisible: true }, loadJSON(LS_LAYOUT, {}));
+  let leftVisible = layoutState.leftVisible !== false;
   let panelVisible = layoutState.panelVisible !== false;
+
+  let dragIndex = null;
+  let dropTarget = null;
+
+  function closestSection(node) {
+    let n = node;
+    while (n && n !== sectionsEl) {
+      if (n.classList && n.classList.contains('section')) return n;
+      n = n.parentNode;
+    }
+    return null;
+  }
+
+  function clearDropMarkers() {
+    for (const child of sectionsEl.children) {
+      if (child.classList) {
+        child.classList.remove('drop-before');
+        child.classList.remove('drop-after');
+      }
+    }
+    dropTarget = null;
+  }
 
   function renderSections() {
     sectionsEl.textContent = '';
     sections.forEach((s, si) => {
       const sec = document.createElement('div');
       sec.className = 'section' + (s.collapsed ? ' collapsed' : '') + (s.active ? '' : ' inactive');
+      sec.draggable = false;
 
       const header = document.createElement('div');
       header.className = 'section-header';
+
+      const grip = document.createElement('span');
+      grip.className = 'grip';
+      grip.textContent = '⠿';
+      grip.title = 'Slepen om de volgorde te veranderen';
+      grip.addEventListener('mousedown', () => {
+        sec.draggable = true;
+      });
+
+      sec.addEventListener('dragstart', (e) => {
+        dragIndex = si;
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          try { e.dataTransfer.setData('text/plain', String(si)); } catch { /* negeer */ }
+        }
+        sec.classList.add('dragging');
+      });
+      sec.addEventListener('dragend', () => {
+        sec.draggable = false;
+        sec.classList.remove('dragging');
+        dragIndex = null;
+        clearDropMarkers();
+      });
 
       const arrow = document.createElement('span');
       arrow.className = 'arrow';
@@ -162,7 +237,7 @@
         renderOverlay();
       });
 
-      header.append(arrow, name, active, del);
+      header.append(grip, arrow, name, active, del);
       header.addEventListener('click', () => {
         s.collapsed = !s.collapsed;
         saveSections();
@@ -218,6 +293,7 @@
         input.spellcheck = false;
         input.value = pattern;
         input.addEventListener('input', () => {
+          clearRegexError();
           s.regexes[ri] = input.value;
           saveSections();
           renderOverlay();
@@ -256,6 +332,37 @@
     });
   }
 
+  sectionsEl.addEventListener('dragover', (e) => {
+    if (dragIndex === null) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    const sec = closestSection(e.target);
+    clearDropMarkers();
+    if (!sec) return;
+    const rect = sec.getBoundingClientRect();
+    const before = e.clientY < rect.top + rect.height / 2;
+    sec.classList.add(before ? 'drop-before' : 'drop-after');
+    dropTarget = { sec, before };
+  });
+
+  sectionsEl.addEventListener('drop', (e) => {
+    e.preventDefault();
+    if (dragIndex === null || !dropTarget) return;
+    const targetSi = Array.from(sectionsEl.children).indexOf(dropTarget.sec);
+    let to = targetSi + (dropTarget.before ? 0 : 1);
+    const from = dragIndex;
+    if (from < to) to--;
+    if (from !== to && from >= 0 && to >= 0 && to <= sections.length) {
+      const moved = sections.splice(from, 1)[0];
+      sections.splice(to, 0, moved);
+      saveSections();
+      renderSections();
+      renderOverlay();
+    }
+    dragIndex = null;
+    clearDropMarkers();
+  });
+
   addSectionBtn.addEventListener('click', () => {
     sections.push({
       id: uid(),
@@ -290,12 +397,27 @@
     renderOverlay();
   });
 
-  // ---------- layout: resizers + paneel tonen/verbergen ----------
+  // ---------- layout: resizers + panelen inklappen ----------
+
+  function setSidebarVisible(v, save) {
+    leftVisible = v;
+    sidebar.classList.toggle('collapsed', !v);
+    resizerLeft.style.display = v ? '' : 'none';
+    sidebarCollapseBtn.textContent = v ? '❮' : '❯';
+    sidebarCollapseBtn.title = v ? 'Bestandenpaneel inklappen' : 'Bestandenpaneel uitklappen';
+    if (save !== false) {
+      layoutState.leftVisible = v;
+      saveJSON(LS_LAYOUT, layoutState);
+    }
+    refreshEditorLayout();
+  }
 
   function setPanelVisible(v, save) {
     panelVisible = v;
-    regexPanel.style.display = v ? '' : 'none';
+    regexPanel.classList.toggle('collapsed', !v);
     resizerRight.style.display = v ? '' : 'none';
+    panelCollapseBtn.textContent = v ? '❯' : '❮';
+    panelCollapseBtn.title = v ? 'Sectiepaneel inklappen' : 'Sectiepaneel uitklappen';
     if (save !== false) {
       layoutState.panelVisible = v;
       saveJSON(LS_LAYOUT, layoutState);
@@ -303,11 +425,13 @@
     refreshEditorLayout();
   }
 
-  togglePanelBtn.addEventListener('click', () => setPanelVisible(!panelVisible));
+  sidebarCollapseBtn.addEventListener('click', () => setSidebarVisible(!leftVisible));
+  panelCollapseBtn.addEventListener('click', () => setPanelVisible(!panelVisible));
 
   function applyLayout() {
     sidebar.style.width = clampInt(layoutState.left, 120, 600, 230) + 'px';
     regexPanel.style.width = clampInt(layoutState.right, 160, 600, 260) + 'px';
+    setSidebarVisible(leftVisible, false);
     setPanelVisible(panelVisible, false);
   }
 
@@ -326,6 +450,7 @@
   }
 
   makeResizer(resizerLeft, (clientX) => {
+    if (!leftVisible) return;
     const rect = layoutEl.getBoundingClientRect();
     layoutState.left = clamp(Math.round(clientX - rect.left), 120, 600);
     sidebar.style.width = layoutState.left + 'px';
@@ -333,6 +458,7 @@
   });
 
   makeResizer(resizerRight, (clientX) => {
+    if (!panelVisible) return;
     const rect = layoutEl.getBoundingClientRect();
     layoutState.right = clamp(Math.round(rect.right - clientX), 160, 600);
     regexPanel.style.width = layoutState.right + 'px';
@@ -556,11 +682,14 @@
   function computeSectionIndex(text) {
     const n = text.length;
     const secIdx = new Int32Array(n).fill(-1);
+    let firstError = null;
     sections.forEach((s, si) => {
       if (!s.active) return;
       for (const pattern of s.regexes) {
         const res = computeMatchRanges(text, pattern);
-        if (res.error) setStatus('Ongeldige regex in sectie "' + s.name + '": ' + res.error, 'warn');
+        if (res.error && !firstError) {
+          firstError = 'Ongeldige regex in sectie "' + s.name + '": ' + res.error;
+        }
         for (const r of res.ranges) {
           for (let i = r[0]; i < r[1]; i++) {
             if (secIdx[i] === -1) secIdx[i] = si;
@@ -568,6 +697,7 @@
         }
       }
     });
+    if (firstError) showRegexError(firstError);
     return secIdx;
   }
 
