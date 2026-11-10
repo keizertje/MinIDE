@@ -10,17 +10,20 @@
   <header id="topbar">
     <button id="open-folder" type="button">📁 Map openen</button>
     <span id="folder-name">Geen map geopend</span>
-    <button id="toggle-panel" type="button" title="Sectiepaneel tonen/verbergen">Secties</button>
+    <span id="status" role="status"></span>
     <button id="settings-btn" type="button" title="Instellingen">⚙</button>
     <div id="settings-pop" hidden>
       <label>Max. matches per regex
         <input id="max-matches" type="number" min="100" max="1000000" step="100" />
       </label>
     </div>
-    <span id="status" role="status"></span>
   </header>
   <div id="layout">
     <aside id="sidebar">
+      <div class="panel-header">
+        <span class="panel-title">Bestanden</span>
+        <button id="sidebar-collapse-btn" type="button" class="icon-btn" title="Bestandenpaneel inklappen">❮</button>
+      </div>
       <div id="tree" class="tree"></div>
     </aside>
     <div id="resizer-left" class="resizer" title="Breedte bestandenpaneel aanpassen"></div>
@@ -38,6 +41,7 @@
       <div class="panel-header">
         <span class="panel-title">Secties</span>
         <button id="add-section" type="button" class="icon-btn" title="Nieuwe sectie aanmaken">＋</button>
+        <button id="panel-collapse-btn" type="button" class="icon-btn" title="Sectiepaneel inklappen">❯</button>
       </div>
       <div id="sections"></div>
     </aside>
