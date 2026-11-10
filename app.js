@@ -5,7 +5,8 @@
   const SAVE_DEBOUNCE_MS = 800;
   const DISK_POLL_MS = 2000;
   const TREE_POLL_MS = 5000;
-  const MAX_HIDDEN_MATCHES = 5000;
+  const MAX_MATCHES = 5000;
+  const MAX_MEASURED_LINES = 20000;
   const EDITOR_PADDING = 12;
 
   const PAIRS = { '(': ')', '[': ']', '{': '}', '<': '>' };
@@ -15,10 +16,15 @@
   const openBtn = document.getElementById('open-folder');
   const folderNameEl = document.getElementById('folder-name');
   const statusEl = document.getElementById('status');
+  const filterEnabled = document.getElementById('filter-enabled');
+  const filterMode = document.getElementById('filter-mode');
   const filterInput = document.getElementById('filter');
+  const markInput = document.getElementById('mark-filter');
+  const markColor = document.getElementById('mark-color');
   const treeEl = document.getElementById('tree');
   const fileBar = document.getElementById('file-bar');
   const overlay = document.getElementById('editor-overlay');
+  const lineNumbersEl = document.getElementById('line-numbers');
   const editor = document.getElementById('editor');
 
   let rootHandle = null;
@@ -29,6 +35,7 @@
   let saveTimer = null;
   let diskTimer = null;
   let treeTimer = null;
+  let lastOverlayText = null;
 
   const expanded = new Set(['']);
   let selectedPath = null;
@@ -208,34 +215,82 @@
     return null;
   }
 
-  function computeHiddenRanges(text) {
-    const pattern = filterInput.value;
-    if (!pattern) return [];
+  function makeRegex(pattern, flags) {
+    const R = window.Regex;
+    if (R && typeof R.regex === 'function' && R.plugins && R.plugins.recursion) {
+      const p = pattern.replace(/\(\?R\)(?!=)/g, '(?R=100)');
+      const tag = R.regex({
+        flags,
+        plugins: [R.plugins.recursion],
+        disable: { x: true, n: true, v: true },
+        unicodeSetsPlugin: null,
+      });
+      const tpl = [p];
+      tpl.raw = [p];
+      return tag(tpl);
+    }
+    return new RegExp(pattern, flags);
+  }
+
+  function computeMatchRanges(text, pattern) {
+    if (!pattern) return { ranges: [], error: null };
     let re;
     try {
-      re = new RegExp(pattern, 'g');
+      re = makeRegex(pattern, 'g');
     } catch (err) {
-      setStatus('Ongeldige regex: ' + err.message, 'warn');
-      return [];
+      return { ranges: [], error: err.message };
     }
     const ranges = [];
     let m;
+    re.lastIndex = 0;
     while ((m = re.exec(text)) !== null) {
       if (m[0].length > 0) ranges.push([m.index, m.index + m[0].length]);
       else re.lastIndex++;
-      if (ranges.length >= MAX_HIDDEN_MATCHES) break;
+      if (ranges.length >= MAX_MATCHES) break;
     }
-    return ranges;
+    return { ranges, error: null };
+  }
+
+  function complementRanges(ranges, length) {
+    const out = [];
+    let pos = 0;
+    for (const r of ranges) {
+      if (r[0] > pos) out.push([pos, r[0]]);
+      pos = Math.max(pos, r[1]);
+    }
+    if (pos < length) out.push([pos, length]);
+    return out;
+  }
+
+  function computeHiddenRanges(text) {
+    if (!filterEnabled.checked) return [];
+    const res = computeMatchRanges(text, filterInput.value);
+    if (res.error) {
+      setStatus('Ongeldige verberg-regex: ' + res.error, 'warn');
+      return [];
+    }
+    if (filterMode.value === 'hide-non-matches') return complementRanges(res.ranges, text.length);
+    return res.ranges;
+  }
+
+  function computeMarkRanges(text) {
+    const res = computeMatchRanges(text, markInput.value);
+    if (res.error) setStatus('Ongeldige markeer-regex: ' + res.error, 'warn');
+    return res.ranges;
   }
 
   function renderOverlay() {
     const text = editor.value;
     const hiddenRanges = computeHiddenRanges(text);
+    const markRanges = computeMarkRanges(text);
     const pair = bracketPairAtCursor();
 
-    const hiddenFlag = new Uint8Array(text.length);
-    for (const range of hiddenRanges) hiddenFlag.fill(1, range[0], range[1]);
-    const bracketFlag = new Uint8Array(text.length);
+    const n = text.length;
+    const hiddenFlag = new Uint8Array(n);
+    for (const r of hiddenRanges) hiddenFlag.fill(1, r[0], r[1]);
+    const markFlag = new Uint8Array(n);
+    for (const r of markRanges) markFlag.fill(1, r[0], r[1]);
+    const bracketFlag = new Uint8Array(n);
     if (pair) {
       bracketFlag[pair[0]] = 1;
       bracketFlag[pair[1]] = 1;
@@ -244,15 +299,20 @@
     overlay.textContent = '';
     const frag = document.createDocumentFragment();
     let i = 0;
-    while (i < text.length) {
+    while (i < n) {
       const h = hiddenFlag[i];
+      const mk = markFlag[i];
       const b = bracketFlag[i];
       let j = i + 1;
-      while (j < text.length && hiddenFlag[j] === h && bracketFlag[j] === b) j++;
+      while (j < n && hiddenFlag[j] === h && markFlag[j] === mk && bracketFlag[j] === b) j++;
       const seg = text.slice(i, j);
-      if (h || b) {
+      if (h || mk || b) {
         const span = document.createElement('span');
-        span.className = (h ? 'hidden' : '') + (h && b ? ' ' : '') + (b ? 'bracket' : '');
+        const cls = [];
+        if (h) cls.push('hidden');
+        if (mk) cls.push('mark');
+        if (b) cls.push('bracket');
+        span.className = cls.join(' ');
         span.textContent = seg;
         frag.appendChild(span);
       } else {
@@ -261,8 +321,67 @@
       i = j;
     }
     overlay.appendChild(frag);
-    if (text.endsWith('\n')) overlay.appendChild(document.createTextNode('\n'));
+
+    if (text !== lastOverlayText) {
+      lastOverlayText = text;
+      renderLineNumbers();
+    }
     syncOverlayScroll();
+  }
+
+  function rowHeightPx() {
+    const lh = parseFloat(getComputedStyle(overlay).lineHeight);
+    return Number.isFinite(lh) ? lh : 21;
+  }
+
+  function locateInOverlay(index) {
+    let remaining = index;
+    const walk = (node) => {
+      for (const child of node.childNodes) {
+        const len = child.textContent.length;
+        if (remaining <= len) {
+          if (child.nodeType === 3) return { node: child, offset: remaining };
+          const r = walk(child);
+          if (r) return r;
+        }
+        remaining -= len;
+      }
+      return null;
+    };
+    return walk(overlay);
+  }
+
+  function renderLineNumbers() {
+    const text = editor.value;
+    const starts = [0];
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '\n') starts.push(i + 1);
+    }
+    const inner = lineNumbersEl;
+    inner.textContent = '';
+    const frag = document.createDocumentFragment();
+    const overlayRect = overlay.getBoundingClientRect();
+    const rh = rowHeightPx();
+    const canMeasure = starts.length <= MAX_MEASURED_LINES && typeof document.createRange === 'function';
+    for (let k = 0; k < starts.length; k++) {
+      let top = k * rh;
+      if (canMeasure) {
+        const loc = locateInOverlay(starts[k]);
+        if (loc) {
+          const range = document.createRange();
+          range.setStart(loc.node, loc.offset);
+          range.collapse(true);
+          top = range.getBoundingClientRect().top - overlayRect.top + overlay.scrollTop;
+        }
+      }
+      const div = document.createElement('div');
+      div.className = 'line-number';
+      div.textContent = String(k + 1);
+      div.style.top = top + 'px';
+      frag.appendChild(div);
+    }
+    inner.appendChild(frag);
+    inner.style.height = overlay.scrollHeight + 'px';
   }
 
   function syncOverlayScroll() {
@@ -272,6 +391,7 @@
     overlay.style.paddingBottom = EDITOR_PADDING + sbh + 'px';
     overlay.scrollTop = editor.scrollTop;
     overlay.scrollLeft = editor.scrollLeft;
+    lineNumbersEl.style.transform = 'translateY(' + -editor.scrollTop + 'px)';
   }
 
   async function openFile(item) {
@@ -402,9 +522,18 @@
   editor.addEventListener('click', renderOverlay);
   editor.addEventListener('select', renderOverlay);
 
+  filterEnabled.addEventListener('change', renderOverlay);
+  filterMode.addEventListener('change', renderOverlay);
   filterInput.addEventListener('input', renderOverlay);
+  markInput.addEventListener('input', renderOverlay);
+  markColor.addEventListener('input', () => {
+    overlay.style.setProperty('--mark-color', markColor.value);
+  });
 
-  window.addEventListener('resize', syncOverlayScroll);
+  window.addEventListener('resize', () => {
+    renderLineNumbers();
+    syncOverlayScroll();
+  });
 
   editor.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
@@ -417,6 +546,8 @@
       saveCurrent();
     }
   });
+
+  overlay.style.setProperty('--mark-color', markColor.value || '#ffe58a');
 
   (async () => {
     try {
