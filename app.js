@@ -37,6 +37,9 @@
   const addSectionBtn = document.getElementById('add-section');
   const sectionsEl = document.getElementById('sections');
   const treeEl = document.getElementById('tree');
+  const newFileBtn = document.getElementById('new-file-btn');
+  const newFolderBtn = document.getElementById('new-folder-btn');
+  const toggleAll = document.getElementById('toggle-all-sections');
   const fileBar = document.getElementById('file-bar');
   const overlay = document.getElementById('editor-overlay');
   const lineNumbersEl = document.getElementById('line-numbers');
@@ -51,6 +54,8 @@
   let diskTimer = null;
   let treeTimer = null;
   let lastOverlayText = null;
+  let handleByPath = {};
+  let openMenu = null;
 
   const expanded = new Set(['']);
   let selectedPath = null;
@@ -330,6 +335,15 @@
 
       sectionsEl.appendChild(sec);
     });
+    updateToggleAll();
+  }
+
+  function updateToggleAll() {
+    if (!toggleAll) return;
+    const all = sections.length > 0 && sections.every((s) => s.active);
+    const some = sections.some((s) => s.active);
+    toggleAll.checked = all;
+    toggleAll.indeterminate = some && !all;
   }
 
   sectionsEl.addEventListener('dragover', (e) => {
@@ -387,6 +401,7 @@
   settingsPop.addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', () => {
     settingsPop.hidden = true;
+    closeMenu();
   });
 
   maxMatchesInput.value = String(maxMatches);
@@ -508,7 +523,7 @@
 
   // ---------- bestandsboom ----------
 
-  async function readTree(dirHandle, path) {
+  async function readTree(dirHandle, path, map) {
     const items = [];
     for await (const entry of dirHandle.entries()) {
       const name = entry[0];
@@ -516,10 +531,13 @@
       if (handle.kind === 'directory') {
         if (SKIP_DIRS.has(name)) continue;
         const childPath = path + name + '/';
-        const children = await readTree(handle, childPath);
+        if (map) map[childPath] = handle;
+        const children = await readTree(handle, childPath, map);
         items.push({ name, kind: 'dir', path: childPath, handle, children });
       } else {
-        items.push({ name, kind: 'file', path: path + name, handle });
+        const filePath = path + name;
+        if (map) map[filePath] = handle;
+        items.push({ name, kind: 'file', path: filePath, handle });
       }
     }
     items.sort((a, b) => {
@@ -566,6 +584,7 @@
 
       if (item.kind === 'dir') {
         row.addEventListener('click', () => {
+          selectedPath = item.path;
           if (expanded.has(item.path)) expanded.delete(item.path);
           else expanded.add(item.path);
           renderTree();
@@ -574,6 +593,18 @@
       } else {
         row.addEventListener('click', () => openFile(item));
       }
+
+      const more = document.createElement('span');
+      more.className = 'more';
+      more.textContent = '⋯';
+      more.title = 'Opties: dupliceren / hernoemen / verwijderen';
+      more.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectedPath = item.path;
+        renderTree();
+        openItemMenu(item, more);
+      });
+      row.appendChild(more);
       ul.appendChild(li);
     }
     return ul;
@@ -587,10 +618,249 @@
   async function refreshTree() {
     if (!rootHandle) return;
     try {
-      currentTree = await readTree(rootHandle, '');
+      const map = { '': rootHandle };
+      currentTree = await readTree(rootHandle, '', map);
+      handleByPath = map;
       renderTree();
     } catch (err) {
       console.error('Kon bestandsboom niet verversen:', err);
+    }
+  }
+
+  // ---------- bestanden aanmaken + contextmenu (dupliceren/hernoemen/verwijderen) ----------
+
+  function findItemByPath(items, path) {
+    for (const item of items) {
+      if (item.path === path) return item;
+      if (item.children) {
+        const r = findItemByPath(item.children, path);
+        if (r) return r;
+      }
+    }
+    return null;
+  }
+
+  function parentInfoFor(path) {
+    const p = path.endsWith('/') ? path.slice(0, -1) : path;
+    const idx = p.lastIndexOf('/');
+    if (idx === -1) return { handle: rootHandle, path: '', name: p };
+    return { handle: handleByPath[p.slice(0, idx + 1)] || rootHandle, path: p.slice(0, idx + 1), name: p.slice(idx + 1) };
+  }
+
+  function targetDirForNew() {
+    if (selectedPath && handleByPath[selectedPath] && handleByPath[selectedPath].kind === 'directory') {
+      return { handle: handleByPath[selectedPath], path: selectedPath };
+    }
+    return { handle: rootHandle, path: '' };
+  }
+
+  async function entryExists(parent, name, kind) {
+    try {
+      if (kind === 'directory') await parent.getDirectoryHandle(name);
+      else await parent.getFileHandle(name);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function uniqueCopyName(parent, name, kind) {
+    let base = name;
+    let ext = '';
+    if (kind === 'file') {
+      const dot = name.lastIndexOf('.');
+      if (dot > 0) {
+        base = name.slice(0, dot);
+        ext = name.slice(dot);
+      }
+    }
+    let candidate = base + ' (kopie)' + ext;
+    let i = 2;
+    while (await entryExists(parent, candidate, kind)) {
+      candidate = base + ' (kopie ' + i + ')' + ext;
+      i++;
+    }
+    return candidate;
+  }
+
+  async function copyDir(srcDir, dstDir) {
+    for await (const entry of srcDir.entries()) {
+      const name = entry[0];
+      const h = entry[1];
+      if (h.kind === 'directory') {
+        const d = await dstDir.getDirectoryHandle(name, { create: true });
+        await copyDir(h, d);
+      } else {
+        const f = await h.getFile();
+        const buf = await f.arrayBuffer();
+        const dst = await dstDir.getFileHandle(name, { create: true });
+        const w = await dst.createWritable();
+        await w.write(buf);
+        await w.close();
+      }
+    }
+  }
+
+  async function createNewFile() {
+    if (!rootHandle) {
+      setStatus('Open eerst een map', 'warn');
+      return;
+    }
+    const name = window.prompt('Naam van het nieuwe bestand:', 'nieuw-bestand.txt');
+    if (!name || !name.trim()) return;
+    const clean = name.trim();
+    const dir = targetDirForNew();
+    try {
+      const fh = await dir.handle.getFileHandle(clean, { create: true });
+      const w = await fh.createWritable();
+      await w.write('');
+      await w.close();
+      if (dir.path) expanded.add(dir.path);
+      await refreshTree();
+      const item = findItemByPath(currentTree, dir.path + clean);
+      if (item) await openFile(item);
+      setStatus('Bestand "' + clean + '" aangemaakt', 'ok');
+    } catch (err) {
+      console.error(err);
+      setStatus('Kon bestand niet aanmaken: ' + err.message, 'warn');
+    }
+  }
+
+  async function createNewFolder() {
+    if (!rootHandle) {
+      setStatus('Open eerst een map', 'warn');
+      return;
+    }
+    const name = window.prompt('Naam van de nieuwe map:', 'nieuwe-map');
+    if (!name || !name.trim()) return;
+    const clean = name.trim();
+    const dir = targetDirForNew();
+    try {
+      await dir.handle.getDirectoryHandle(clean, { create: true });
+      if (dir.path) expanded.add(dir.path);
+      await refreshTree();
+      setStatus('Map "' + clean + '" aangemaakt', 'ok');
+    } catch (err) {
+      console.error(err);
+      setStatus('Kon map niet aanmaken: ' + err.message, 'warn');
+    }
+  }
+
+  function closeMenu() {
+    if (openMenu) {
+      openMenu.remove();
+      openMenu = null;
+    }
+  }
+
+  function openItemMenu(item, anchorEl) {
+    closeMenu();
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    const rect = anchorEl.getBoundingClientRect();
+    menu.style.left = rect.left + 'px';
+    menu.style.top = rect.bottom + 4 + 'px';
+    const addAction = (label, fn) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'menu-item';
+      b.textContent = label;
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeMenu();
+        fn();
+      });
+      menu.appendChild(b);
+    };
+    addAction('Dupliceren', () => duplicateItem(item));
+    addAction('Hernoemen', () => renameItem(item));
+    addAction('Verwijderen', () => deleteItem(item));
+    document.body.appendChild(menu);
+    openMenu = menu;
+  }
+
+  async function duplicateItem(item) {
+    if (!rootHandle) return;
+    const parent = parentInfoFor(item.path);
+    try {
+      const newName = await uniqueCopyName(parent.handle, item.name, item.kind);
+      if (item.kind === 'file') {
+        const f = await item.handle.getFile();
+        const buf = await f.arrayBuffer();
+        const dst = await parent.handle.getFileHandle(newName, { create: true });
+        const w = await dst.createWritable();
+        await w.write(buf);
+        await w.close();
+      } else {
+        const dst = await parent.handle.getDirectoryHandle(newName, { create: true });
+        await copyDir(item.handle, dst);
+      }
+      await refreshTree();
+      setStatus('Gedupliceerd naar "' + newName + '"', 'ok');
+    } catch (err) {
+      console.error(err);
+      setStatus('Dupliceren mislukt: ' + err.message, 'warn');
+    }
+  }
+
+  async function renameItem(item) {
+    if (!rootHandle) return;
+    const parent = parentInfoFor(item.path);
+    const newName = window.prompt('Hernoemen naar:', item.name);
+    if (!newName || !newName.trim() || newName.trim() === item.name) return;
+    const clean = newName.trim();
+    try {
+      if (typeof item.handle.move === 'function') {
+        await item.handle.move(clean);
+      } else {
+        if (item.kind === 'file') {
+          const f = await item.handle.getFile();
+          const buf = await f.arrayBuffer();
+          const dst = await parent.handle.getFileHandle(clean, { create: true });
+          const w = await dst.createWritable();
+          await w.write(buf);
+          await w.close();
+        } else {
+          const d = await parent.handle.getDirectoryHandle(clean, { create: true });
+          await copyDir(item.handle, d);
+        }
+        await parent.handle.removeEntry(item.name, { recursive: true });
+      }
+      const newPath = parent.path + clean + (item.kind === 'directory' ? '/' : '');
+      if (currentFile && currentFile.path === item.path) {
+        currentFile.path = newPath;
+        fileBar.textContent = newPath;
+      }
+      if (selectedPath === item.path) selectedPath = newPath;
+      await refreshTree();
+      setStatus('Hernoemd naar "' + clean + '"', 'ok');
+    } catch (err) {
+      console.error(err);
+      setStatus('Hernoemen mislukt: ' + err.message, 'warn');
+    }
+  }
+
+  async function deleteItem(item) {
+    if (!rootHandle) return;
+    const parent = parentInfoFor(item.path);
+    if (!window.confirm('"' + item.name + '" echt verwijderen?')) return;
+    try {
+      await parent.handle.removeEntry(item.name, { recursive: true });
+      if (currentFile && (currentFile.path === item.path || currentFile.path.startsWith(item.path))) {
+        currentFile = null;
+        dirty = false;
+        editor.value = '';
+        editor.disabled = true;
+        fileBar.textContent = 'Geen bestand geopend';
+        lastOverlayText = null;
+        renderOverlay();
+      }
+      if (selectedPath && (selectedPath === item.path || selectedPath.startsWith(item.path))) selectedPath = null;
+      await refreshTree();
+      setStatus('"' + item.name + '" verwijderd', 'ok');
+    } catch (err) {
+      console.error(err);
+      setStatus('Verwijderen mislukt: ' + err.message, 'warn');
     }
   }
 
@@ -985,6 +1255,15 @@
   // ---------- events ----------
 
   openBtn.addEventListener('click', openFolder);
+  newFileBtn.addEventListener('click', createNewFile);
+  newFolderBtn.addEventListener('click', createNewFolder);
+  toggleAll.addEventListener('change', () => {
+    const v = toggleAll.checked;
+    sections.forEach((s) => { s.active = v; });
+    saveSections();
+    renderSections();
+    renderOverlay();
+  });
 
   editor.addEventListener('input', onEdit);
   editor.addEventListener('scroll', syncOverlayScroll);
