@@ -16,10 +16,16 @@ Gebruik Chrome of Edge (andere browsers ondersteunen `showDirectoryPicker` nog n
 
 - **Map openen**: knop linksboven. De map-handle wordt in IndexedDB bewaard en bij
   een volgend bezoek automatisch hersteld (als de toestemming nog geldig is).
-- **Bestandenpaneel (links)**: header "Bestanden" met een `<`-knop om het paneel
-  in te klappen (dan verschijnt een `>` om het weer open te klappen). Mappen in de
-  boom zijn inklapbaar; `.git` en `node_modules` worden verborgen. De boom ververst
-  elke 5 seconden automatisch.
+- **Bestandenpaneel (links)**: header "Bestanden" met knoppen 📄＋ (nieuw bestand) en
+  📁＋ (nieuwe map) en een `<`-knop om het paneel in te klappen (dan verschijnt een
+  `>` om het weer open te klappen). Nieuw bestand/map wordt aangemaakt in de
+  geselecteerde map (anders in de root); een nieuw bestand wordt direct geopend.
+  Mappen in de boom zijn inklapbaar; `.git` en `node_modules` worden verborgen. De
+  boom ververst elke 5 seconden automatisch.
+- **⋯-menu per bestand/map**: klik op het driepuntjes-icoon in een rij voor
+  **Dupliceren** (kopie met "(kopie)" in de naam; mappen recursief), **Hernoemen**
+  en **Verwijderen** (vraagt om bevestiging; bij verwijderen van het open bestand
+  wordt de editor geleegd).
 - **Beide panelen resizebaar**: sleep de rand tussen paneel en editor (links en
   rechts). Breedtes en inklapstatus worden onthouden (localStorage).
 - **Bestand openen**: klik op een bestand in de boom om het in het hoofdvenster te
@@ -52,6 +58,10 @@ Vervangt de losse regex-velden: hier maak je **secties** aan (＋). Een sectie h
   de blauwe lijn toont waar hij terechtkomt. Bij overlap van matches wint de
   **bovenste** sectie (hogere prioriteit).
 - Het paneel klap je in met de `>`-knop in de paneelheader (weer open met `<`).
+- De **checkbox in de paneelheader** schakelt alle secties in één keer in/uit. Hij
+  volgt de losse secties mee: alles aan = aangevinkt, een deel aan = half
+  (indeterminate), alles uit = uitgevinkt. Een losse sectie kun je altijd
+  individueel aanzetten, ook als de header-checkbox uit staat.
 - Secties worden in localStorage bewaard.
 - **Fouten in regexen**: een ongeldige regex toont een melding in de status. Pas je
   de regex aan, dan verdwijnt de melding direct; anders fade hij na 30 seconden
@@ -73,8 +83,9 @@ De editor bestaat uit een transparante `<textarea>` (bevat altijd de volledige,
 echte tekst — bron van waarheid voor positie, caret, wrap en opslag) met
 daarachter een overlay-`<div>` met identieke layout. De overlay rendert per
 sectie gekleurde spans (inline `color`/`background`) en een outline voor het
-bracket-paar. Regelnummers worden in de gutter gepositioneerd via de echte
-layout-positie (Range-rect) van elke regelstart, dus ze blijven synchroon bij
-wraps. Omdat de overlay qua layout 1-op-1 gelijk is aan de textarea (inclusief
-scrollbar-compensatie), blijven caret, scroll en muisklikken altijd op de juiste
-plek, óók met gekleurde/verborgen tekst.
+bracket-paar. Regelnummers worden in de gutter gepositioneerd via een
+niet-ingeklapte Range over het eerste teken van elke regel (bij een lege regel:
+de `\n` zelf), gemeten nádat de scrollbar-compensatie is toegepast — zo blijven
+ze synchroon bij wraps, scroll, resize en inklappen. Omdat de overlay qua
+layout 1-op-1 gelijk is aan de textarea, blijven caret, scroll en muisklikken
+altijd op de juiste plek, óók met gekleurde/verborgen tekst.
