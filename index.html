@@ -10,9 +10,18 @@
   <header id="topbar">
     <button id="open-folder" type="button">📁 Map openen</button>
     <span id="folder-name">Geen map geopend</span>
-    <input id="filter" type="text" spellcheck="false"
-      placeholder="Regex verbergen…"
-      title="Alles wat matcht met deze regex wordt verborgen in de weergave; het blijft wél in het bestand." />
+    <span class="ctl" title="Verberg tekst op basis van een regex; de tekst blijft wél in het bestand">
+      <label><input type="checkbox" id="filter-enabled" checked /> verberg</label>
+      <select id="filter-mode">
+        <option value="hide-matches">matches verbergen</option>
+        <option value="hide-non-matches">alles behalve matches verbergen</option>
+      </select>
+      <input id="filter" type="text" spellcheck="false" placeholder="Regex verbergen…" />
+    </span>
+    <span class="ctl" title="Markeer matches met een kleur">
+      <input id="mark-filter" type="text" spellcheck="false" placeholder="Regex markeren…" />
+      <input id="mark-color" type="color" value="#ffe58a" title="Kleur voor gemarkeerde matches" />
+    </span>
     <span id="status" role="status"></span>
   </header>
   <div id="layout">
@@ -22,12 +31,15 @@
     <main id="editor-pane">
       <div id="file-bar">Geen bestand geopend</div>
       <div id="editor-wrap">
+        <div id="gutter" aria-hidden="true"><div id="line-numbers"></div></div>
         <div id="editor-overlay" aria-hidden="true"></div>
         <textarea id="editor" spellcheck="false" disabled
           placeholder="Open een map via de knop linksboven en klik op een bestand in de boom."></textarea>
       </div>
     </main>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/regex@6.1.0/dist/regex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/regex-recursion@6.0.2/dist/regex-recursion.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
