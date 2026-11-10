@@ -16,10 +16,12 @@ Gebruik Chrome of Edge (andere browsers ondersteunen `showDirectoryPicker` nog n
 
 - **Map openen**: knop linksboven. De map-handle wordt in IndexedDB bewaard en bij
   een volgend bezoek automatisch hersteld (als de toestemming nog geldig is).
-- **Bestandsboom**: links in het paneel. Mappen zijn inklapbaar; `.git` en
-  `node_modules` worden verborgen. De boom ververst elke 5 seconden automatisch.
+- **Bestandenpaneel (links)**: header "Bestanden" met een `<`-knop om het paneel
+  in te klappen (dan verschijnt een `>` om het weer open te klappen). Mappen in de
+  boom zijn inklapbaar; `.git` en `node_modules` worden verborgen. De boom ververst
+  elke 5 seconden automatisch.
 - **Beide panelen resizebaar**: sleep de rand tussen paneel en editor (links en
-  rechts). Breedtes worden onthouden (localStorage).
+  rechts). Breedtes en inklapstatus worden onthouden (localStorage).
 - **Bestand openen**: klik op een bestand in de boom om het in het hoofdvenster te
   bewerken. Binaire bestanden worden gedetecteerd en niet als tekst bewerkt.
 - **Automatisch opslaan**: ca. 0,8 seconde nadat je stopt met typen wordt het
@@ -46,12 +48,17 @@ Vervangt de losse regex-velden: hier maak je **secties** aan (＋). Een sectie h
   voorgrondkleur is hetzelfde als verbergen,
 - **meerdere regexen** per sectie (＋ regex), elk met een eigen verwijderknop.
 
-Matches van alle regexen in een actieve sectie krijgen de kleuren van die sectie.
-Bij overlap wint de eerste (bovenste) sectie. Secties worden in localStorage
-bewaard.
+- **Volgorde**: sleep een sectie via het ⠿-icoon in de header naar een andere plek;
+  de blauwe lijn toont waar hij terechtkomt. Bij overlap van matches wint de
+  **bovenste** sectie (hogere prioriteit).
+- Het paneel klap je in met de `>`-knop in de paneelheader (weer open met `<`).
+- Secties worden in localStorage bewaard.
+- **Fouten in regexen**: een ongeldige regex toont een melding in de status. Pas je
+  de regex aan, dan verdwijnt de melding direct; anders fade hij na 30 seconden
+  uit en verdwijnt.
 
-- **Instellingen (⚙)**: oa. het **max. aantal matches per regex** (standaard 5000),
-  ook bewaard in localStorage.
+- **Instellingen (⚙, rechtsboven)**: oa. het **max. aantal matches per regex**
+  (standaard 5000), ook bewaard in localStorage.
 - **Recursieve regex**: de engine is Regex+ 6.1.0 met de officiële
   `regex-recursion`-plugin 6.0.2, geladen vanaf jsdelivr (CDN), dus `(?R)`,
   `(?R=N)` en `\g<naam&R=N>` werken (diepte 2–100; plain `(?R)` wordt
