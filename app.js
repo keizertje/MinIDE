@@ -760,30 +760,36 @@
     return Number.isFinite(lh) ? lh : 21;
   }
 
-  function locateInOverlay(index) {
-    // Verzamel alle text-nodes in documentvolgorde. Een index op een grens
-    // (remaining === len) wordt expres NIET aan het einde van de vorige node
-    // gekoppeld, maar aan het begin van de volgende — een collapsed range op
-    // het einde van een text-node geeft in browsers een onbetrouwbare rect.
-    const textNodes = [];
+  // Alle text-nodes van de overlay in documentvolgorde, met cumulatieve offset.
+  function textNodeList() {
+    const list = [];
+    let cum = 0;
     const collect = (node) => {
       for (const child of node.childNodes) {
-        if (child.nodeType === 3) textNodes.push(child);
-        else collect(child);
+        if (child.nodeType === 3) {
+          const len = child.textContent.length;
+          list.push({ node: child, start: cum, len });
+          cum += len;
+        } else {
+          collect(child);
+        }
       }
     };
     collect(overlay);
-    let remaining = index;
-    for (const t of textNodes) {
-      const len = t.textContent.length;
-      if (remaining < len) return { node: t, offset: remaining };
-      remaining -= len;
+    return { list, total: cum };
+  }
+
+  function posAt(list, total, index) {
+    if (!list.length) return null;
+    if (index >= total) {
+      const last = list[list.length - 1];
+      return { node: last.node, offset: last.len };
     }
-    if (textNodes.length) {
-      const last = textNodes[textNodes.length - 1];
-      return { node: last, offset: last.textContent.length };
+    for (const t of list) {
+      if (index <= t.start + t.len) return { node: t.node, offset: index - t.start };
     }
-    return null;
+    const last = list[list.length - 1];
+    return { node: last.node, offset: last.len };
   }
 
   function renderLineNumbers() {
@@ -798,18 +804,40 @@
     const overlayRect = overlay.getBoundingClientRect();
     const rh = rowHeightPx();
     const canMeasure = starts.length <= MAX_MEASURED_LINES && typeof document.createRange === 'function';
+    const nodes = canMeasure ? textNodeList() : { list: [], total: 0 };
+    const list = nodes.list;
+    const total = nodes.total;
     for (let k = 0; k < starts.length; k++) {
-      let top = k * rh;
-      if (canMeasure) {
-        const loc = locateInOverlay(starts[k]);
-        if (loc) {
-          const range = document.createRange();
-          range.setStart(loc.node, loc.offset);
-          range.collapse(true);
-          const r = range.getBoundingClientRect();
-          if (r && (r.height > 0 || r.width > 0)) {
-            top = r.top - overlayRect.top + overlay.scrollTop;
+      // fallback: zelfde formule als een gemetene regel zonder wrap
+      let top = EDITOR_PADDING + k * rh;
+      if (canMeasure && list.length) {
+        const s = starts[k];
+        const range = document.createRange();
+        let r = null;
+        if (s < total) {
+          // Selecteer het EERSTE teken van de regel — bij een lege regel is dat
+          // de \n zelf. Een niet-ingeklapte range geeft altijd een echt rect
+          // (een collapsed range vóór een \n geeft in browsers een lege rect).
+          const a = posAt(list, total, s);
+          const b = posAt(list, total, s + 1);
+          if (a && b) {
+            range.setStart(a.node, a.offset);
+            range.setEnd(b.node, b.offset);
+            const rects = range.getClientRects();
+            if (rects && rects.length) r = rects[0];
           }
+        } else {
+          // laatste regel aan het einde van het bestand (s === total): caret
+          // aan het einde — in pre-wrap staat die op de laatste (lege) regel
+          const a = posAt(list, total, total);
+          if (a) {
+            range.setStart(a.node, a.offset);
+            range.collapse(true);
+            r = range.getBoundingClientRect();
+          }
+        }
+        if (r && (r.height > 0 || r.width > 0)) {
+          top = r.top - overlayRect.top + overlay.scrollTop;
         }
       }
       const div = document.createElement('div');
