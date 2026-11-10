@@ -147,7 +147,9 @@ body {
 }
 
 #sidebar.collapsed .panel-title,
-#sidebar.collapsed #tree {
+#sidebar.collapsed #tree,
+#sidebar.collapsed #new-file-btn,
+#sidebar.collapsed #new-folder-btn {
   display: none;
 }
 
@@ -207,6 +209,52 @@ body {
 .tree .label {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.tree .row .more {
+  margin-left: auto;
+  visibility: hidden;
+  padding: 0 5px;
+  border-radius: 4px;
+  color: #666666;
+  flex: none;
+}
+
+.tree .row:hover .more,
+.tree .row .more:hover {
+  visibility: visible;
+}
+
+.tree .row .more:hover {
+  background: #dddddd;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 170px;
+  padding: 4px;
+  background: #ffffff;
+  border: 1px solid #cccccc;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: #e8f0ff;
 }
 
 #editor-pane {
@@ -330,6 +378,7 @@ body {
 }
 
 #regex-panel.collapsed .panel-title,
+#regex-panel.collapsed #toggle-all-sections,
 #regex-panel.collapsed #add-section,
 #regex-panel.collapsed #sections {
   display: none;
