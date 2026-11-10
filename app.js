@@ -5,9 +5,15 @@
   const SAVE_DEBOUNCE_MS = 800;
   const DISK_POLL_MS = 2000;
   const TREE_POLL_MS = 5000;
-  const MAX_MATCHES = 5000;
   const MAX_MEASURED_LINES = 20000;
   const EDITOR_PADDING = 12;
+  const DEFAULT_MAX_MATCHES = 5000;
+  const MIN_MAX_MATCHES = 100;
+  const MAX_MAX_MATCHES = 1000000;
+
+  const LS_SECTIONS = 'mini-ide-sections';
+  const LS_SETTINGS = 'mini-ide-settings';
+  const LS_LAYOUT = 'mini-ide-layout';
 
   const PAIRS = { '(': ')', '[': ']', '{': '}', '<': '>' };
   const OPENERS = new Set(Object.keys(PAIRS));
@@ -16,11 +22,17 @@
   const openBtn = document.getElementById('open-folder');
   const folderNameEl = document.getElementById('folder-name');
   const statusEl = document.getElementById('status');
-  const filterEnabled = document.getElementById('filter-enabled');
-  const filterMode = document.getElementById('filter-mode');
-  const filterInput = document.getElementById('filter');
-  const markInput = document.getElementById('mark-filter');
-  const markColor = document.getElementById('mark-color');
+  const togglePanelBtn = document.getElementById('toggle-panel');
+  const settingsBtn = document.getElementById('settings-btn');
+  const settingsPop = document.getElementById('settings-pop');
+  const maxMatchesInput = document.getElementById('max-matches');
+  const layoutEl = document.getElementById('layout');
+  const sidebar = document.getElementById('sidebar');
+  const resizerLeft = document.getElementById('resizer-left');
+  const resizerRight = document.getElementById('resizer-right');
+  const regexPanel = document.getElementById('regex-panel');
+  const addSectionBtn = document.getElementById('add-section');
+  const sectionsEl = document.getElementById('sections');
   const treeEl = document.getElementById('tree');
   const fileBar = document.getElementById('file-bar');
   const overlay = document.getElementById('editor-overlay');
@@ -39,11 +51,295 @@
 
   const expanded = new Set(['']);
   let selectedPath = null;
+  let uidCounter = 0;
+
+  function uid() {
+    return 's' + Date.now().toString(36) + '-' + uidCounter++;
+  }
+
+  function clamp(v, lo, hi) {
+    return Math.min(hi, Math.max(lo, v));
+  }
+
+  function clampInt(v, lo, hi, fallback) {
+    const n = parseInt(v, 10);
+    if (!Number.isFinite(n)) return fallback;
+    return clamp(n, lo, hi);
+  }
+
+  function loadJSON(key, fallback) {
+    try {
+      const v = localStorage.getItem(key);
+      return v ? JSON.parse(v) : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function saveJSON(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // opslag kan mislukken (bijv. private mode); negeren
+    }
+  }
 
   function setStatus(text, kind) {
     statusEl.textContent = text;
     statusEl.className = kind || '';
   }
+
+  // ---------- secties (regex-groepen) ----------
+
+  let sections = loadJSON(LS_SECTIONS, null);
+  if (!Array.isArray(sections) || sections.length === 0) {
+    sections = [{
+      id: uid(),
+      name: 'Sectie 1',
+      active: true,
+      collapsed: false,
+      bg: '#ffe58a',
+      fg: '#000000',
+      regexes: [],
+    }];
+  }
+
+  function saveSections() {
+    saveJSON(LS_SECTIONS, sections);
+  }
+
+  let settings = Object.assign({ maxMatches: DEFAULT_MAX_MATCHES }, loadJSON(LS_SETTINGS, {}));
+  let maxMatches = clampInt(settings.maxMatches, MIN_MAX_MATCHES, MAX_MAX_MATCHES, DEFAULT_MAX_MATCHES);
+  let layoutState = Object.assign({ left: 230, right: 260, panelVisible: true }, loadJSON(LS_LAYOUT, {}));
+  let panelVisible = layoutState.panelVisible !== false;
+
+  function renderSections() {
+    sectionsEl.textContent = '';
+    sections.forEach((s, si) => {
+      const sec = document.createElement('div');
+      sec.className = 'section' + (s.collapsed ? ' collapsed' : '') + (s.active ? '' : ' inactive');
+
+      const header = document.createElement('div');
+      header.className = 'section-header';
+
+      const arrow = document.createElement('span');
+      arrow.className = 'arrow';
+      arrow.textContent = s.collapsed ? '▸' : '▾';
+      arrow.title = 'Sectie open-/dichtklappen';
+
+      const name = document.createElement('input');
+      name.className = 'section-name';
+      name.value = s.name;
+      name.spellcheck = false;
+      name.addEventListener('input', () => {
+        s.name = name.value;
+        saveSections();
+      });
+      name.addEventListener('click', (e) => e.stopPropagation());
+
+      const active = document.createElement('input');
+      active.type = 'checkbox';
+      active.checked = s.active;
+      active.title = 'Sectie actief / niet actief';
+      active.addEventListener('change', () => {
+        s.active = active.checked;
+        saveSections();
+        renderSections();
+        renderOverlay();
+      });
+      active.addEventListener('click', (e) => e.stopPropagation());
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'icon-btn';
+      del.textContent = '✕';
+      del.title = 'Sectie verwijderen';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sections.splice(si, 1);
+        saveSections();
+        renderSections();
+        renderOverlay();
+      });
+
+      header.append(arrow, name, active, del);
+      header.addEventListener('click', () => {
+        s.collapsed = !s.collapsed;
+        saveSections();
+        renderSections();
+      });
+      sec.appendChild(header);
+
+      const colors = document.createElement('div');
+      colors.className = 'section-colors';
+
+      const bgLabel = document.createElement('label');
+      bgLabel.textContent = 'achtergrond ';
+      const bg = document.createElement('input');
+      bg.type = 'color';
+      bg.className = 'sec-bg';
+      bg.value = s.bg;
+      bg.title = 'Achtergrondkleur van matches';
+      bg.addEventListener('input', () => {
+        s.bg = bg.value;
+        saveSections();
+        renderOverlay();
+      });
+
+      const fgLabel = document.createElement('label');
+      fgLabel.textContent = 'voorgrond ';
+      const fg = document.createElement('input');
+      fg.type = 'color';
+      fg.className = 'sec-fg';
+      fg.value = s.fg;
+      fg.title = 'Voorgrondkleur van matches (wit = verbergen)';
+      fg.addEventListener('input', () => {
+        s.fg = fg.value;
+        saveSections();
+        renderOverlay();
+      });
+
+      bgLabel.appendChild(bg);
+      fgLabel.appendChild(fg);
+      colors.append(bgLabel, fgLabel);
+      sec.appendChild(colors);
+
+      const body = document.createElement('div');
+      body.className = 'section-body';
+      const list = document.createElement('div');
+      list.className = 'regex-list';
+
+      s.regexes.forEach((pattern, ri) => {
+        const row = document.createElement('div');
+        row.className = 'regex-row';
+        const input = document.createElement('input');
+        input.className = 'regex-input';
+        input.placeholder = 'regex…';
+        input.spellcheck = false;
+        input.value = pattern;
+        input.addEventListener('input', () => {
+          s.regexes[ri] = input.value;
+          saveSections();
+          renderOverlay();
+        });
+        const delR = document.createElement('button');
+        delR.type = 'button';
+        delR.className = 'icon-btn';
+        delR.textContent = '✕';
+        delR.title = 'Regex verwijderen';
+        delR.addEventListener('click', () => {
+          s.regexes.splice(ri, 1);
+          saveSections();
+          renderSections();
+          renderOverlay();
+        });
+        row.append(input, delR);
+        list.appendChild(row);
+      });
+
+      const addR = document.createElement('button');
+      addR.type = 'button';
+      addR.className = 'icon-btn add-regex';
+      addR.textContent = '+ regex';
+      addR.title = 'Regex toevoegen aan deze sectie';
+      addR.addEventListener('click', () => {
+        s.regexes.push('');
+        saveSections();
+        renderSections();
+      });
+
+      body.appendChild(list);
+      body.appendChild(addR);
+      sec.appendChild(body);
+
+      sectionsEl.appendChild(sec);
+    });
+  }
+
+  addSectionBtn.addEventListener('click', () => {
+    sections.push({
+      id: uid(),
+      name: 'Sectie ' + (sections.length + 1),
+      active: true,
+      collapsed: false,
+      bg: '#ffe58a',
+      fg: '#000000',
+      regexes: [''],
+    });
+    saveSections();
+    renderSections();
+    renderOverlay();
+  });
+
+  // ---------- instellingen ----------
+
+  settingsBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    settingsPop.hidden = !settingsPop.hidden;
+  });
+  settingsPop.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => {
+    settingsPop.hidden = true;
+  });
+
+  maxMatchesInput.value = String(maxMatches);
+  maxMatchesInput.addEventListener('input', () => {
+    maxMatches = clampInt(maxMatchesInput.value, MIN_MAX_MATCHES, MAX_MAX_MATCHES, maxMatches);
+    settings.maxMatches = maxMatches;
+    saveJSON(LS_SETTINGS, settings);
+    renderOverlay();
+  });
+
+  // ---------- layout: resizers + paneel tonen/verbergen ----------
+
+  function setPanelVisible(v, save) {
+    panelVisible = v;
+    regexPanel.style.display = v ? '' : 'none';
+    resizerRight.style.display = v ? '' : 'none';
+    if (save !== false) {
+      layoutState.panelVisible = v;
+      saveJSON(LS_LAYOUT, layoutState);
+    }
+    refreshEditorLayout();
+  }
+
+  togglePanelBtn.addEventListener('click', () => setPanelVisible(!panelVisible));
+
+  function applyLayout() {
+    sidebar.style.width = clampInt(layoutState.left, 120, 600, 230) + 'px';
+    regexPanel.style.width = clampInt(layoutState.right, 160, 600, 260) + 'px';
+    setPanelVisible(panelVisible, false);
+  }
+
+  function makeResizer(el, onMove) {
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const move = (ev) => onMove(ev.clientX);
+      const up = () => {
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+        refreshEditorLayout();
+      };
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    });
+  }
+
+  makeResizer(resizerLeft, (clientX) => {
+    const rect = layoutEl.getBoundingClientRect();
+    layoutState.left = clamp(Math.round(clientX - rect.left), 120, 600);
+    sidebar.style.width = layoutState.left + 'px';
+    saveJSON(LS_LAYOUT, layoutState);
+  });
+
+  makeResizer(resizerRight, (clientX) => {
+    const rect = layoutEl.getBoundingClientRect();
+    layoutState.right = clamp(Math.round(rect.right - clientX), 160, 600);
+    regexPanel.style.width = layoutState.right + 'px';
+    saveJSON(LS_LAYOUT, layoutState);
+  });
+
+  // ---------- IndexedDB (map-handle onthouden) ----------
 
   function openDB() {
     return new Promise((resolve, reject) => {
@@ -83,6 +379,8 @@
       return false;
     }
   }
+
+  // ---------- bestandsboom ----------
 
   async function readTree(dirHandle, path) {
     const items = [];
@@ -170,6 +468,8 @@
     }
   }
 
+  // ---------- bracket matching ----------
+
   function isBracket(ch) {
     return OPENERS.has(ch) || CLOSERS.has(ch);
   }
@@ -215,6 +515,8 @@
     return null;
   }
 
+  // ---------- regex engine (Regex+ met recursion-plugin, fallback native) ----------
+
   function makeRegex(pattern, flags) {
     const R = window.Regex;
     if (R && typeof R.regex === 'function' && R.plugins && R.plugins.recursion) {
@@ -246,50 +548,37 @@
     while ((m = re.exec(text)) !== null) {
       if (m[0].length > 0) ranges.push([m.index, m.index + m[0].length]);
       else re.lastIndex++;
-      if (ranges.length >= MAX_MATCHES) break;
+      if (ranges.length >= maxMatches) break;
     }
     return { ranges, error: null };
   }
 
-  function complementRanges(ranges, length) {
-    const out = [];
-    let pos = 0;
-    for (const r of ranges) {
-      if (r[0] > pos) out.push([pos, r[0]]);
-      pos = Math.max(pos, r[1]);
-    }
-    if (pos < length) out.push([pos, length]);
-    return out;
+  function computeSectionIndex(text) {
+    const n = text.length;
+    const secIdx = new Int32Array(n).fill(-1);
+    sections.forEach((s, si) => {
+      if (!s.active) return;
+      for (const pattern of s.regexes) {
+        const res = computeMatchRanges(text, pattern);
+        if (res.error) setStatus('Ongeldige regex in sectie "' + s.name + '": ' + res.error, 'warn');
+        for (const r of res.ranges) {
+          for (let i = r[0]; i < r[1]; i++) {
+            if (secIdx[i] === -1) secIdx[i] = si;
+          }
+        }
+      }
+    });
+    return secIdx;
   }
 
-  function computeHiddenRanges(text) {
-    if (!filterEnabled.checked) return [];
-    const res = computeMatchRanges(text, filterInput.value);
-    if (res.error) {
-      setStatus('Ongeldige verberg-regex: ' + res.error, 'warn');
-      return [];
-    }
-    if (filterMode.value === 'hide-non-matches') return complementRanges(res.ranges, text.length);
-    return res.ranges;
-  }
-
-  function computeMarkRanges(text) {
-    const res = computeMatchRanges(text, markInput.value);
-    if (res.error) setStatus('Ongeldige markeer-regex: ' + res.error, 'warn');
-    return res.ranges;
-  }
+  // ---------- overlay ----------
 
   function renderOverlay() {
     const text = editor.value;
-    const hiddenRanges = computeHiddenRanges(text);
-    const markRanges = computeMarkRanges(text);
+    const secIdx = computeSectionIndex(text);
     const pair = bracketPairAtCursor();
 
     const n = text.length;
-    const hiddenFlag = new Uint8Array(n);
-    for (const r of hiddenRanges) hiddenFlag.fill(1, r[0], r[1]);
-    const markFlag = new Uint8Array(n);
-    for (const r of markRanges) markFlag.fill(1, r[0], r[1]);
     const bracketFlag = new Uint8Array(n);
     if (pair) {
       bracketFlag[pair[0]] = 1;
@@ -300,19 +589,18 @@
     const frag = document.createDocumentFragment();
     let i = 0;
     while (i < n) {
-      const h = hiddenFlag[i];
-      const mk = markFlag[i];
+      const s = secIdx[i];
       const b = bracketFlag[i];
       let j = i + 1;
-      while (j < n && hiddenFlag[j] === h && markFlag[j] === mk && bracketFlag[j] === b) j++;
+      while (j < n && secIdx[j] === s && bracketFlag[j] === b) j++;
       const seg = text.slice(i, j);
-      if (h || mk || b) {
+      if (s >= 0 || b) {
         const span = document.createElement('span');
-        const cls = [];
-        if (h) cls.push('hidden');
-        if (mk) cls.push('mark');
-        if (b) cls.push('bracket');
-        span.className = cls.join(' ');
+        if (s >= 0 && sections[s]) {
+          span.style.color = sections[s].fg;
+          span.style.background = sections[s].bg;
+        }
+        if (b) span.classList.add('bracket');
         span.textContent = seg;
         frag.appendChild(span);
       } else {
@@ -327,6 +615,11 @@
       renderLineNumbers();
     }
     syncOverlayScroll();
+  }
+
+  function refreshEditorLayout() {
+    lastOverlayText = null;
+    renderOverlay();
   }
 
   function rowHeightPx() {
@@ -393,6 +686,8 @@
     overlay.scrollLeft = editor.scrollLeft;
     lineNumbersEl.style.transform = 'translateY(' + -editor.scrollTop + 'px)';
   }
+
+  // ---------- bestanden ----------
 
   async function openFile(item) {
     if (dirty && currentFile) await saveCurrent();
@@ -514,6 +809,8 @@
     treeTimer = setInterval(refreshTree, TREE_POLL_MS);
   }
 
+  // ---------- events ----------
+
   openBtn.addEventListener('click', openFolder);
 
   editor.addEventListener('input', onEdit);
@@ -522,18 +819,7 @@
   editor.addEventListener('click', renderOverlay);
   editor.addEventListener('select', renderOverlay);
 
-  filterEnabled.addEventListener('change', renderOverlay);
-  filterMode.addEventListener('change', renderOverlay);
-  filterInput.addEventListener('input', renderOverlay);
-  markInput.addEventListener('input', renderOverlay);
-  markColor.addEventListener('input', () => {
-    overlay.style.setProperty('--mark-color', markColor.value);
-  });
-
-  window.addEventListener('resize', () => {
-    renderLineNumbers();
-    syncOverlayScroll();
-  });
+  window.addEventListener('resize', refreshEditorLayout);
 
   editor.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
@@ -547,7 +833,11 @@
     }
   });
 
-  overlay.style.setProperty('--mark-color', markColor.value || '#ffe58a');
+  // ---------- start ----------
+
+  renderSections();
+  applyLayout();
+  renderOverlay();
 
   (async () => {
     try {
